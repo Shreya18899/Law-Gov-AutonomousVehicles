@@ -2,6 +2,7 @@ import pygame
 import sys
 import math
 import random
+import compliance
 
 pygame.init()
 
@@ -146,13 +147,15 @@ class Vehicle(GameObject):
         self.__init__()
 
 class Environment:
-    def __init__(self):
+    def __init__(self, name, speed_limit):
         self.lane_markers = []
         self.trees = []
         self.buildings = []
         self.vehicles = []
         self.traffic_lights = []
         self.road_height = HEIGHT // 2
+        self.name = name
+        self.speed_limit = speed_limit
 
     def setup_highway(self):
         self.lane_markers.clear()
@@ -229,8 +232,8 @@ class PlayerVehicle(GameObject):
 
 class Game:
     def __init__(self):
-        self.highway_env = Environment()
-        self.city_env = Environment()
+        self.highway_env = Environment('highway', 60)
+        self.city_env = Environment('urban', 30)
         self.highway_env.setup_highway()
         self.city_env.setup_city()
         self.car = PlayerVehicle(100, HEIGHT//2)
@@ -239,6 +242,7 @@ class Game:
         self.stopped_at_light = False
         self.collisions = set()
         self.game_frame = 0
+        self.compliance_action = None
 
     def get_current_env(self):
         return self.highway_env if self.current_environment == HIGHWAY else self.city_env
@@ -397,7 +401,7 @@ class Game:
         font = pygame.font.Font(None, 36)
         speed_text = f"Speed: {int(self.car.speed)} mph"
         # env_text = f"Environment: {self.current_environment.title()}"
-        env_text = "Environment: City (35mph)" if self.current_environment == CITY else "Environment: Highway (100mph)"
+        env_text = f'Environment: {env.name} ({env.speed_limit} mph)'
         next_light_state = self.get_next_traffic_light_state()
         if next_light_state:
             light_text = f"Next Light: {next_light_state.title()}"
@@ -424,6 +428,14 @@ class Game:
         screen.blit(info_box_surface, (10, HEIGHT - (font.get_height() + 10)))
         screen.blit(speed_surface, (20, HEIGHT - font.get_height()))
         screen.blit(env_surface, (220, HEIGHT - font.get_height()))
+
+        cp_width = 350
+        cp_box = pygame.Rect(WIDTH-(cp_width+10), 10, cp_width, font.get_height())
+        cp_surface = pygame.Surface((cp_box.width, cp_box.height), pygame.SRCALPHA)
+        cp_surface.fill(INFO_BOX_COLOR)
+        cp_text = font.render(f'Compliance: {self.compliance_action}', True, WHITE)
+        screen.blit(cp_surface, cp_box)
+        screen.blit(cp_text, cp_box)
 
     def get_next_traffic_light_state(self):
         if self.current_environment != CITY:
@@ -487,6 +499,11 @@ def main():
             game.car.y = max(game.car.y - game.car.vertical_speed, game.target_y)
 
         game.update()
+        compliance.input_speed(game.car.speed)
+        compliance.input_speed_limit(game.get_current_env().speed_limit)
+
+        game.compliance_action = compliance.output_action()
+
         game.draw()
         pygame.display.flip()
         clock.tick(60)
