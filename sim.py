@@ -27,17 +27,49 @@ CITY = "city"
 current_environment = HIGHWAY
 
 class GameObject:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+    def __init__(self, x, y, w, h):
+        self.bounds = pygame.Rect(x, y, w, h)        
+
+    @property
+    def x(self):
+        return self.bounds.x
+    
+    @x.setter
+    def x(self, nx):
+        self.bounds.x = nx
+    
+    @property
+    def y(self):
+        return self.bounds.y
+    
+    @y.setter
+    def y(self, ny):
+        self.bounds.y = ny
+
+    @property
+    def width(self):
+        return self.bounds.width
+    
+    @width.setter
+    def width(self, nw):
+        self.bounds.width = nw
+
+    @property
+    def height(self):
+        return self.bounds.height
+
+    @height.setter
+    def height(self, nh):
+        self.bounds.height = nh
+
+    def collide(self, other_obj):
+        return self.bounds.colliderect(other_obj.bounds)
 
 class TrafficLight(GameObject):
     def __init__(self, x):
-        super().__init__(x, HEIGHT//2 - 100)
+        super().__init__(x, HEIGHT//2 - 100, 20, 80)
         self.state = "red"  # red, yellow, green
         self.timer = random.randint(100, 200)
-        self.width = 20
-        self.height = 60
         self.pole_height = 80
 
     def update(self):
@@ -75,20 +107,16 @@ class TrafficLight(GameObject):
 
 class LaneMarker(GameObject):
     def __init__(self, x, y):
-        super().__init__(x, y)
-        self.width = 40
-        self.height = 8
+        super().__init__(x, y, 40, 8)
 
 class Tree(GameObject):
     def __init__(self, x, y, size):
-        super().__init__(x, y)
+        super().__init__(x, y, size, size)
         self.size = size
 
 class Building(GameObject):
     def __init__(self, x, y, width, height):
-        super().__init__(x, y)
-        self.width = width
-        self.height = height
+        super().__init__(x, y, width, height)
         self.windows = []
         self.generate_windows()
 
@@ -105,13 +133,17 @@ class Building(GameObject):
                     ))
 
 class Vehicle(GameObject):
-    def __init__(self, x, y, speed, color):
-        super().__init__(x, y)
-        self.speed = speed
-        self.color = color
-        self.width = 50
-        self.height = 30
+    car_colors = [(255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 0)]
+
+    def __init__(self):
+        road_height = HEIGHT//2
+        super().__init__(random.randint(WIDTH, WIDTH * 2), HEIGHT//2 + random.choice([-1, 0, 1]) * road_height//3, 50, 30)
+        self.speed = random.randint(5, 15)
+        self.color = random.choice(Vehicle.car_colors)
         self.stopped = False
+
+    def reset(self):
+        self.__init__()
 
 class Environment:
     def __init__(self):
@@ -133,8 +165,8 @@ class Environment:
         marker_spacing = 80
         for i in range(20):
             x_pos = i * marker_spacing
-            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 - self.road_height//4))
-            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 + self.road_height//4))
+            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 - self.road_height//6))
+            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 + self.road_height//6))
 
         # Create trees
         for i in range(30):
@@ -145,13 +177,8 @@ class Environment:
             self.trees.append(Tree(x, y, size))
 
         # Create vehicles
-        car_colors = [(255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 0)]
         for i in range(3):
-            x = random.randint(WIDTH, WIDTH * 2)
-            y = HEIGHT//2 + random.choice([-1, 1]) * self.road_height//4
-            speed = random.randint(5, 15)
-            color = random.choice(car_colors)
-            self.vehicles.append(Vehicle(x, y, speed, color))
+            self.vehicles.append(Vehicle())
 
     def setup_city(self):
         self.lane_markers.clear()
@@ -164,8 +191,8 @@ class Environment:
         marker_spacing = 60
         for i in range(25):
             x_pos = i * marker_spacing
-            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 - self.road_height//4))
-            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 + self.road_height//4))
+            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 - self.road_height//2))
+            self.lane_markers.append(LaneMarker(x_pos, HEIGHT//2 + self.road_height//2))
 
         # Only one traffic light at a specific position
         traffic_light_position = WIDTH // 3  # Position at one location only
@@ -186,13 +213,19 @@ class Environment:
             self.buildings.append(Building(x, HEIGHT//2 + self.road_height//2, width, height))
 
         # Create vehicles
-        car_colors = [(255, 0, 0), (0, 0, 255), (0, 255, 0)]
         for i in range(4):
-            x = random.randint(WIDTH, WIDTH * 2)
-            y = HEIGHT//2 + random.choice([-1, 1]) * self.road_height//4
-            speed = random.randint(3, 8)
-            color = random.choice(car_colors)
-            self.vehicles.append(Vehicle(x, y, speed, color))
+            self.vehicles.append(Vehicle())
+
+class PlayerVehicle(GameObject):
+    def __init__(self, x, y):
+        super().__init__(x, y, 40, 30)
+        self.speed = 0
+        self.acceleration = 0.2
+        self.max_speed = 120
+        self.deceleration = 0.075
+        self.brake_decel = 0.5
+        self.braking = False
+        self.vertical_speed = 4
 
 class Game:
     def __init__(self):
@@ -200,21 +233,12 @@ class Game:
         self.city_env = Environment()
         self.highway_env.setup_highway()
         self.city_env.setup_city()
-        
-        self.car_x = 100
-        self.car_y = HEIGHT//2
-        self.car_width = 40
-        self.car_height = 30
-        self.speed = 0
-        self.acceleration = 0.075
-        self.max_speed = 200
-        self.deceleration = 0.1
-        self.vertical_speed = 4
-        
+        self.car = PlayerVehicle(100, HEIGHT//2)
         self.current_environment = HIGHWAY
-        self.target_y = self.car_y
-        self.current_y = self.car_y
+        self.target_y = self.car.y
         self.stopped_at_light = False
+        self.collisions = set()
+        self.game_frame = 0
 
     def get_current_env(self):
         return self.highway_env if self.current_environment == HIGHWAY else self.city_env
@@ -222,7 +246,7 @@ class Game:
     def check_traffic_lights(self):
         if self.current_environment == CITY:
             for light in self.get_current_env().traffic_lights:
-                if abs(light.x - self.car_x) < 30:  # If car is near traffic light
+                if abs(light.x - self.car.x) < 30:  # If car is near traffic light
                     return light.state == "red" or light.state == "yellow"
         return False
 
@@ -233,7 +257,7 @@ class Game:
         next_light = None
         min_distance = float('inf')
         for light in env.traffic_lights:
-            distance = light.x - self.car_x
+            distance = light.x - self.car.x
             if distance > 0 and distance < min_distance:
                 min_distance = distance
                 next_light = light
@@ -269,17 +293,17 @@ class Game:
                           (int(vehicle.x + 40), int(vehicle.y + vehicle.height//2)), 5)
 
     def draw_player_car(self):
-        bounce = math.sin(pygame.time.get_ticks() * 0.1) * (self.speed/self.max_speed) * 2
+        bounce = math.sin(pygame.time.get_ticks() * 0.1) * (self.car.speed/self.car.max_speed) * 2
         points = [
-            (self.car_x, self.current_y - self.car_height//2),
-            (self.car_x + self.car_width, self.current_y),
-            (self.car_x, self.current_y + self.car_height//2)
+            (self.car.x, self.car.y - self.car.height//2),
+            (self.car.x + self.car.width, self.car.y),
+            (self.car.x, self.car.y + self.car.height//2)
         ]
         pygame.draw.polygon(screen, RED, points)
         pygame.draw.circle(screen, BLACK, 
-                          (int(self.car_x + 10), int(self.current_y - self.car_height//2 + bounce)), 5)
+                          (int(self.car.x + 10), int(self.car.y - self.car.height//2 + bounce)), 5)
         pygame.draw.circle(screen, BLACK, 
-                          (int(self.car_x + 10), int(self.current_y + self.car_height//2 + bounce)), 5)
+                          (int(self.car.x + 10), int(self.car.y + self.car.height//2 + bounce)), 5)
 
     def update(self):
         env = self.get_current_env()
@@ -288,29 +312,31 @@ class Game:
         if self.current_environment == CITY:
             for light in env.traffic_lights:
                 light.update()
-                light.x -= self.speed/2
+                light.x -= self.car.speed/2
                 if light.x < -50:
                     light.x = WIDTH + 50
 
         # Update lane markers
         for marker in env.lane_markers:
-            marker.x -= self.speed/2
+            marker.x -= self.car.speed/2
             if marker.x < -40:
                 marker.x = WIDTH + 40
 
         # Update vehicles
         for vehicle in env.vehicles:
             if not vehicle.stopped:
-                vehicle.x -= (self.speed - vehicle.speed)
+                vehicle.x -= (self.car.speed - vehicle.speed)
             if vehicle.x < -100:
-                vehicle.x = WIDTH + random.randint(0, 200)
-                vehicle.y = HEIGHT//2 + random.choice([-1, 1]) * env.road_height//4
-                vehicle.speed = random.randint(5, 15) if self.current_environment == HIGHWAY else random.randint(3, 8)
-
+                vehicle.reset()
+            if vehicle.collide(self.car):
+                vehicle.speed = 0
+                self.car.speed = 0
+                self.collisions.add(self.game_frame)
+            
         # Update trees (highway only)
         if self.current_environment == HIGHWAY:
             for tree in env.trees:
-                tree.x -= self.speed/4
+                tree.x -= self.car.speed/4
                 if tree.x < -50:
                     tree.x = WIDTH + 50
                     tree.y = HEIGHT//2 + (env.road_height//2 + random.randint(20, 100)) * random.choice([-1, 1])
@@ -318,12 +344,20 @@ class Game:
         # Update buildings (city only)
         if self.current_environment == CITY:
             for building in env.buildings:
-                building.x -= self.speed/4
+                building.x -= self.car.speed/4
                 if building.x + building.width < 0:
                     building.x = WIDTH
                     building.height = random.randint(100, 200)
                     building.windows = []
                     building.generate_windows()
+
+        # Update collisions
+        for f in self.collisions.copy():
+            if self.game_frame - f > 60:
+                self.collisions.remove(f)
+
+        # Update frame counter
+        self.game_frame = self.game_frame + 1
 
     def draw(self):
         screen.fill(DARKER_GRAY)
@@ -360,14 +394,8 @@ class Game:
                 if tree.y >= HEIGHT//2:
                     self.draw_tree(tree)
 
-        info_box_width = 300
-        info_box_height = 100
-        info_box_surface = pygame.Surface((info_box_width, info_box_height), pygame.SRCALPHA)
-        info_box_surface.fill(INFO_BOX_COLOR)
-        screen.blit(info_box_surface, (10, 10))
-
         font = pygame.font.Font(None, 36)
-        speed_text = f"Speed: {int(self.speed)} mph"
+        speed_text = f"Speed: {int(self.car.speed)} mph"
         # env_text = f"Environment: {self.current_environment.title()}"
         env_text = "Environment: City (35mph)" if self.current_environment == CITY else "Environment: Highway (100mph)"
         next_light_state = self.get_next_traffic_light_state()
@@ -379,11 +407,23 @@ class Game:
         speed_surface = font.render(speed_text, True, WHITE)
         env_surface = font.render(env_text, True, WHITE)
         light_surface = font.render(light_text, True, WHITE) if light_text else None
-
-        screen.blit(speed_surface, (20, 20))
-        screen.blit(env_surface, (20, 50))
+        col_surface = font.render('* Collision Detected! *', True, WHITE) if len(self.collisions) > 0 else None
+        brake_surface = font.render('* Braking! *', True, WHITE) if self.car.braking else None
+        
         if light_surface:
-            screen.blit(light_surface, (20, 80))
+            screen.blit(light_surface, (20, 10))
+        if brake_surface:
+            screen.blit(brake_surface, (20, 30))
+        if col_surface:
+            screen.blit(col_surface, (20, 50))
+
+        info_box_width = 600
+        info_box_height = 50
+        info_box_surface = pygame.Surface((info_box_width, info_box_height), pygame.SRCALPHA)
+        info_box_surface.fill(INFO_BOX_COLOR)
+        screen.blit(info_box_surface, (10, HEIGHT - (font.get_height() + 10)))
+        screen.blit(speed_surface, (20, HEIGHT - font.get_height()))
+        screen.blit(env_surface, (220, HEIGHT - font.get_height()))
 
     def get_next_traffic_light_state(self):
         if self.current_environment != CITY:
@@ -392,7 +432,7 @@ class Game:
         next_light = None
         min_distance = float('inf')
         for light in env.traffic_lights:
-            distance = light.x - self.car_x
+            distance = light.x - self.car.x
             if distance > 0 and distance < min_distance:
                 min_distance = distance
                 next_light = light
@@ -412,9 +452,9 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     game.current_environment = CITY if game.current_environment == HIGHWAY else HIGHWAY
-                    game.current_y = HEIGHT//2
+                    game.car.y = HEIGHT//2
                     game.target_y = HEIGHT//2
-                    game.speed = 0
+                    game.car.speed = 0
                     if game.current_environment == CITY:
                         game.city_env.setup_city()
                     else:
@@ -423,26 +463,28 @@ def main():
         keys = pygame.key.get_pressed()
         
         should_stop = game.check_traffic_lights()
+        game.car.braking = False
         
         if not should_stop:
             if keys[pygame.K_RIGHT]:
-                game.speed = min(game.speed + game.acceleration, game.max_speed)
+                game.car.speed = min(game.car.speed + game.car.acceleration, game.car.max_speed)
             if keys[pygame.K_LEFT]:
-                game.speed = max(game.speed - game.acceleration, 0)
+                game.car.speed = max(game.car.speed - game.car.brake_decel, 0)
+                game.car.braking = True
             if not (keys[pygame.K_RIGHT] or keys[pygame.K_LEFT]):
-                game.speed = max(0, game.speed - game.deceleration)
+                game.car.speed = max(0, game.car.speed - game.car.deceleration)
         else:
-            game.speed = max(0, game.speed - game.deceleration * 2)  # Faster deceleration at red lights
+            game.car.speed = max(0, game.car.speed - game.car.deceleration * 2)  # Faster deceleration at red lights
 
         if keys[pygame.K_UP]:
-            game.target_y = max(HEIGHT//2 - game.get_current_env().road_height//3, game.target_y - game.vertical_speed)
+            game.target_y = max(HEIGHT//2 - game.get_current_env().road_height//3, game.target_y - game.car.vertical_speed)
         if keys[pygame.K_DOWN]:
-            game.target_y = min(HEIGHT//2 + game.get_current_env().road_height//3, game.target_y + game.vertical_speed)
+            game.target_y = min(HEIGHT//2 + game.get_current_env().road_height//3, game.target_y + game.car.vertical_speed)
 
-        if game.current_y < game.target_y:
-            game.current_y = min(game.current_y + game.vertical_speed, game.target_y)
-        elif game.current_y > game.target_y:
-            game.current_y = max(game.current_y - game.vertical_speed, game.target_y)
+        if game.car.y < game.target_y:
+            game.car.y = min(game.car.y + game.car.vertical_speed, game.target_y)
+        elif game.car.y > game.target_y:
+            game.car.y = max(game.car.y - game.car.vertical_speed, game.target_y)
 
         game.update()
         game.draw()
