@@ -474,19 +474,15 @@ def main():
 
         keys = pygame.key.get_pressed()
         
-        should_stop = game.check_traffic_lights()
         game.car.braking = False
         
-        if not should_stop:
-            if keys[pygame.K_RIGHT]:
-                game.car.speed = min(game.car.speed + game.car.acceleration, game.car.max_speed)
-            if keys[pygame.K_LEFT]:
-                game.car.speed = max(game.car.speed - game.car.brake_decel, 0)
-                game.car.braking = True
-            if not (keys[pygame.K_RIGHT] or keys[pygame.K_LEFT]):
-                game.car.speed = max(0, game.car.speed - game.car.deceleration)
-        else:
-            game.car.speed = max(0, game.car.speed - game.car.deceleration * 2)  # Faster deceleration at red lights
+        if keys[pygame.K_RIGHT]:
+            game.car.speed = min(game.car.speed + game.car.acceleration, game.car.max_speed)
+        if keys[pygame.K_LEFT]:
+            game.car.speed = max(game.car.speed - game.car.brake_decel, 0)
+            game.car.braking = True
+        if not (keys[pygame.K_RIGHT] or keys[pygame.K_LEFT]):
+            game.car.speed = max(0, game.car.speed - game.car.deceleration)
 
         if keys[pygame.K_UP]:
             game.target_y = max(HEIGHT//2 - game.get_current_env().road_height//3, game.target_y - game.car.vertical_speed)
