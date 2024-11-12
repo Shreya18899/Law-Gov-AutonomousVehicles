@@ -1,0 +1,18 @@
+# Define a rule for stopping at a red traffic signal
+if
+    traffic_signal("red", "stop")
+then
+    action("stop")
+
+# Define a rule for adjusting speed based on environment type
+if
+    speed_limit("urban", Limit)
+then
+    action("set_speed", Limit)
+
+# Rule for obstacle detection and avoidance
+if
+    obstacle("ahead", Distance)
+    Distance < 10
+then
+    action("brake")

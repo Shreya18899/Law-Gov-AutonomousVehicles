@@ -25,7 +25,7 @@ INFO_BOX_COLOR = (0, 0, 0, 150)  # Semi-transparent black
 
 HIGHWAY = "highway"
 CITY = "city"
-current_environment = HIGHWAY
+current_environment = CITY
 
 class GameObject:
     def __init__(self, x, y, w, h):
@@ -72,6 +72,7 @@ class TrafficLight(GameObject):
         self.state = "red"  # red, yellow, green
         self.timer = random.randint(100, 200)
         self.pole_height = 80
+        compliance.set_traffic_signal(self.state)  # Set initial state
 
     def update(self):
         self.timer -= 1
@@ -85,6 +86,10 @@ class TrafficLight(GameObject):
             elif self.state == "green":
                 self.state = "yellow"
                 self.timer = 50
+
+            # Update the compliance system with the new traffic signal state
+            compliance.set_traffic_signal(self.state)
+
 
     def draw(self, screen):
         pygame.draw.rect(screen, BLACK, (self.x, self.y, 10, self.pole_height))
@@ -237,7 +242,7 @@ class Game:
         self.highway_env.setup_highway()
         self.city_env.setup_city()
         self.car = PlayerVehicle(100, HEIGHT//2)
-        self.current_environment = HIGHWAY
+        self.current_environment = CITY
         self.target_y = self.car.y
         self.stopped_at_light = False
         self.collisions = set()
@@ -316,39 +321,54 @@ class Game:
         if self.current_environment == CITY:
             for light in env.traffic_lights:
                 light.update()
-                light.x -= self.car.speed/2
+                light.x -= self.car.speed / 2
                 if light.x < -50:
                     light.x = WIDTH + 50
 
         # Update lane markers
         for marker in env.lane_markers:
-            marker.x -= self.car.speed/2
+            marker.x -= self.car.speed / 2
             if marker.x < -40:
                 marker.x = WIDTH + 40
 
         # Update vehicles
+        min_distance_ahead = float('inf')  # Track the minimum distance to any vehicle ahead
         for vehicle in env.vehicles:
             if not vehicle.stopped:
                 vehicle.x -= (self.car.speed - vehicle.speed)
             if vehicle.x < -100:
                 vehicle.reset()
+            
+            # Check for collision with player vehicle
             if vehicle.collide(self.car):
                 vehicle.speed = 0
                 self.car.speed = 0
                 self.collisions.add(self.game_frame)
             
+            # Calculate the distance to the player vehicle if the vehicle is ahead
+            if vehicle.x > self.car.x:
+                distance = vehicle.x - self.car.x
+                if distance < min_distance_ahead:
+                    min_distance_ahead = distance
+
+        # Set obstacle distance if there’s a vehicle within 10 meters
+        if min_distance_ahead < 10:
+            compliance.update_obstacle(min_distance_ahead)
+        else:
+            compliance.update_obstacle(None)  # Clear obstacle if none is within 10 meters
+
         # Update trees (highway only)
         if self.current_environment == HIGHWAY:
             for tree in env.trees:
-                tree.x -= self.car.speed/4
+                tree.x -= self.car.speed / 4
                 if tree.x < -50:
                     tree.x = WIDTH + 50
-                    tree.y = HEIGHT//2 + (env.road_height//2 + random.randint(20, 100)) * random.choice([-1, 1])
+                    tree.y = HEIGHT // 2 + (env.road_height // 2 + random.randint(20, 100)) * random.choice([-1, 1])
 
         # Update buildings (city only)
         if self.current_environment == CITY:
             for building in env.buildings:
-                building.x -= self.car.speed/4
+                building.x -= self.car.speed / 4
                 if building.x + building.width < 0:
                     building.x = WIDTH
                     building.height = random.randint(100, 200)
@@ -360,8 +380,71 @@ class Game:
             if self.game_frame - f > 60:
                 self.collisions.remove(f)
 
+        # Update compliance system with speed and speed limit
+        compliance.input_speed(self.car.speed)
+        compliance.input_speed_limit(env.speed_limit)
+
+        # Get the compliance action based on the updated environment and obstacle information
+        self.compliance_action = compliance.output_action()
+
         # Update frame counter
-        self.game_frame = self.game_frame + 1
+        self.game_frame += 1
+
+
+    # def update(self):
+    #     env = self.get_current_env()
+        
+    #     # Update traffic lights in city mode
+    #     if self.current_environment == CITY:
+    #         for light in env.traffic_lights:
+    #             light.update()
+    #             light.x -= self.car.speed/2
+    #             if light.x < -50:
+    #                 light.x = WIDTH + 50
+
+    #     # Update lane markers
+    #     for marker in env.lane_markers:
+    #         marker.x -= self.car.speed/2
+    #         if marker.x < -40:
+    #             marker.x = WIDTH + 40
+
+    #     # Update vehicles
+    #     for vehicle in env.vehicles:
+    #         if not vehicle.stopped:
+    #             vehicle.x -= (self.car.speed - vehicle.speed)
+    #         if vehicle.x < -100:
+    #             vehicle.reset()
+    #         if vehicle.collide(self.car):
+    #             vehicle.speed = 0
+    #             self.car.speed = 0
+    #             self.collisions.add(self.game_frame)
+            
+    #     # Update trees (highway only)
+    #     if self.current_environment == HIGHWAY:
+    #         for tree in env.trees:
+    #             tree.x -= self.car.speed/4
+    #             if tree.x < -50:
+    #                 tree.x = WIDTH + 50
+    #                 tree.y = HEIGHT//2 + (env.road_height//2 + random.randint(20, 100)) * random.choice([-1, 1])
+
+    #     # Update buildings (city only)
+    #     if self.current_environment == CITY:
+    #         for building in env.buildings:
+    #             building.x -= self.car.speed/4
+    #             if building.x + building.width < 0:
+    #                 building.x = WIDTH
+    #                 building.height = random.randint(100, 200)
+    #                 building.windows = []
+    #                 building.generate_windows()
+
+    #     # Update collisions
+    #     for f in self.collisions.copy():
+    #         if self.game_frame - f > 60:
+    #             self.collisions.remove(f)
+
+    #     # Update frame counter
+    #     self.game_frame = self.game_frame + 1
+
 
     def draw(self):
         screen.fill(DARKER_GRAY)
