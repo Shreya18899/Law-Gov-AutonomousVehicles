@@ -1,5 +1,6 @@
-# Law-Gov-AutonomousVehicles
+# Law and Governance of AI  - Building a compliance module for Autonomous vehicles.
 
+Developing a compliance module for an Autonomous Vehicle (AV) system where inputs from the AVs are transmitted to a reasoning-based system. This system evaluates the inputs against pre-defined traffic laws and other vehicles to provide actionable decisions. The compliance module ensures that the AV operates within the bounds of legal, ethical, and safety standards, offering clear and interpretable guidance for scenarios where the AV's initial actions require further validation or correction. The goal is to enhance accountability, transparency, and adherence to governance standards in autonomous vehicle operations.
 
 Open-Sourced Reasoning Libraries
 
