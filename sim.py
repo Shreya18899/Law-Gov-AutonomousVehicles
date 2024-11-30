@@ -14,6 +14,7 @@ pygame.display.set_caption("Driving Simulation - Highway & City")
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
+BLUE = (0, 0, 255)
 GRAY = (80, 80, 80)
 DARKER_GRAY = (50, 50, 50)
 GREEN = (34, 139, 34)
@@ -29,7 +30,7 @@ current_environment = CITY
 
 class GameObject:
     _current_object_id = 0
-    def __init__(self, x, y, w, h):
+    def __init__(self, x, y, w=10, h=10):
         self.bounds = pygame.Rect(x, y, w, h)        
         self.id = GameObject._current_object_id
         GameObject._current_object_id += 1
@@ -231,17 +232,58 @@ class ThrottleCommand:
     Coast = 'coast'
     Brake = 'brake'
 
+player_vehicle_profiles = {
+    'sedan': {
+        'width': 45,
+        'height': 35,
+        'acceleration': 0.2,
+        'max_speed': 120,
+        'deceleration': 0.075,
+        'brake_decel': 0.5,
+        'vertical_speed': 4,
+        'color': GREEN
+    },
+    'sports_car': {
+        'width': 55,
+        'height': 30,
+        'acceleration': 0.3,
+        'max_speed': 150,
+        'deceleration': 0.075,
+        'brake_decel': 0.75,
+        'vertical_speed': 6,
+        'color': RED
+    },
+    'delivery_truck': {
+        'width': 100,
+        'height': 40,
+        'acceleration': 0.1,
+        'max_speed': 90,
+        'deceleration': 0.06,
+        'brake_decel': 0.2,
+        'vertical_speed': 3,
+        'color': BLUE
+    }
+}
+
 class PlayerVehicle(GameObject):
     def __init__(self, x, y):
-        super().__init__(x, y, 40, 30)
+        super().__init__(x, y)
         self.throttle = ThrottleCommand.Coast
         self.speed = 0
-        self.acceleration = 0.2
-        self.max_speed = 120
-        self.deceleration = 0.075
-        self.brake_decel = 0.5
         self.braking = False
-        self.vertical_speed = 4
+        self.profile_name = 'sedan'
+        self.set_profile(self.profile_name)
+
+    def set_profile(self, profile_name):
+        profile = player_vehicle_profiles[profile_name]
+        self.width = profile['width']
+        self.height = profile['height']
+        self.color = profile['color']
+        self.acceleration = profile['acceleration']
+        self.max_speed = profile['max_speed']
+        self.deceleration = profile['deceleration']
+        self.brake_decel = profile['brake_decel']
+        self.vertical_speed = profile['vertical_speed']
 
 class Game:
     def __init__(self):
@@ -290,18 +332,12 @@ class Game:
                           (int(vehicle.x + 40), int(vehicle.y + vehicle.height//2)), 5)
 
     def draw_player_car(self):
-        bounce = math.sin(pygame.time.get_ticks() * 0.1) * (self.car.speed/self.car.max_speed) * 2
-        points = [
-            (self.car.x, self.car.y - self.car.height//2),
-            (self.car.x + self.car.width, self.car.y),
-            (self.car.x, self.car.y + self.car.height//2)
-        ]
-        pygame.draw.polygon(screen, RED, points)
-        pygame.draw.circle(screen, BLACK, 
-                          (int(self.car.x + 10), int(self.car.y - self.car.height//2 + bounce)), 5)
-        pygame.draw.circle(screen, BLACK, 
-                          (int(self.car.x + 10), int(self.car.y + self.car.height//2 + bounce)), 5)
-
+        pygame.draw.rect(screen, self.car.color, self.car.bounds)
+        pygame.draw.circle(screen, BLACK, (self.car.x + self.car.width*0.2, self.car.y), 5)
+        pygame.draw.circle(screen, BLACK, (self.car.x + self.car.width*0.8, self.car.y), 5)
+        pygame.draw.circle(screen, BLACK, (self.car.x + self.car.width*0.2, self.car.y + self.car.height), 5)
+        pygame.draw.circle(screen, BLACK, (self.car.x + self.car.width*0.8, self.car.y + self.car.height), 5)            
+        
     def update(self):
         env = self.get_current_env()
         
@@ -519,7 +555,8 @@ def main():
     clock = pygame.time.Clock()
     game = Game()
     running = True
-
+    current_profile_index = 0
+    vehicle_profiles = list(player_vehicle_profiles.keys())
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -536,7 +573,9 @@ def main():
                         game.highway_env.setup_highway()
                 elif event.key == pygame.K_TAB:
                     game.enforce_compliance = not game.enforce_compliance
-
+                elif event.key == pygame.K_p:
+                    current_profile_index = (current_profile_index + 1) % len(vehicle_profiles)
+                    game.car.set_profile(vehicle_profiles[current_profile_index])
         keys = pygame.key.get_pressed()
         
         if keys[pygame.K_LEFT]:
