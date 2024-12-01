@@ -443,7 +443,7 @@ class PlayerVehicle(Vehicle):
         if game.enforce_compliance and 'slow_weather' in game.compliance_actions:
             self.desired_speed = 10  # Enforce a minimum speed of 10 mph in adverse weather
         else:
-            self.desired_speed = 10  # Default desired speed (can be modified based on other conditions)
+            self.desired_speed = self.speed
 
         # Handle user inputs to adjust desired_speed**
         if game.keys[pygame.K_LEFT]:
