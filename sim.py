@@ -3,6 +3,7 @@ import sys
 import math
 import random
 from compliance import ComplianceModule
+from enum import Enum
 
 pygame.init()
 
@@ -36,10 +37,40 @@ HIGHWAY = "highway"
 CITY = "city"
 current_environment = CITY
 
+class IncidentType(Enum):
+    Collision = 1
+    TrafficLightViolation = 2
+    SpeedViolation = 3
+
+class Incident:
+    def __init__(self, incident_time:int, incident_type:IncidentType, data:dict):
+        self.incident_time = incident_time
+        self.incident_type = incident_type
+        self.data = data
+    
+    def __str__(self):
+        return f"{self.incident_time}: {self.incident_type} - {self.data}"
+
+class IncidentReport:
+    def __init__(self):
+        self.event_log = []
+
+    def add_incident(self, incident:Incident):
+        self.event_log.append(str(incident))
+        print(incident)
+
+    def print_report(self):
+        print("Incident Report:")
+        for event in self.event_log:
+            print(event)
+
 class GameObject:
     _current_object_id = 0
     def __init__(self, x=0, y=0, w=10, h=10):
         self.bounds = pygame.Rect(x, y, w, h)        
+        self.init_id()
+
+    def init_id(self):
         self.id = GameObject._current_object_id
         GameObject._current_object_id += 1
 
@@ -106,6 +137,8 @@ class TrafficLight(GameObject):
         if not self.flashed and self.collide(game.car) and self.state == "red":
             game.flash_frame = game.game_frame
             self.flashed = True
+            incident_data = {'traffic_light_id': self.id, 'traffic_light_x': self.x}
+            game.car.handle_incident(game, IncidentType.TrafficLightViolation, incident_data)
 
         if game.get_screen_x(self.x) < -50:
             self.reset(game)
@@ -122,7 +155,6 @@ class TrafficLight(GameObject):
         pygame.draw.rect(screen, WHITE, stop_line_rect, 10)
         pygame.draw.rect(screen, BLACK, (screen_x - 5, self.y-60, 20, 60))
         
-
         if game.draw_collisions:
             screen_bounds = self.bounds.copy()
             screen_bounds.x = game.get_screen_x(screen_bounds.x)
@@ -245,6 +277,7 @@ class Vehicle(GameObject):
         self.reset(game)
 
     def reset(self, game):
+        self.init_id()
         road_height = HEIGHT//2
         spawn_side = random.choice([-1, 0, 1])
         spawn_x = random.randint(1, 2) * WIDTH + game.car.x
@@ -309,14 +342,19 @@ class Vehicle(GameObject):
         target_accel = self.calculate_accel(target_speed, time_to_intercept)
         return target_speed, target_accel, time_to_intercept, target_object
 
+    def handle_incident(self, game, incident_type:IncidentType, incident_data:dict):
+        if incident_type == IncidentType.Collision:
+            self.crashed = True
+            self.speed = 0
+        incident_data[self.id] = {self.x, self.y, self.speed, self.profile_name}
+
     def update_collisions(self, game):
         for vehicle in game.get_current_env().vehicles:
             if vehicle != self:
-                if self.collide(vehicle):
-                    self.speed = 0
-                    self.crashed = True                 
-                    if vehicle == game.car:   
-                        game.collisions.add(game.game_frame)   
+                if (not self.crashed or not vehicle.crashed) and self.collide(vehicle):
+                    incident_data = {}
+                    self.handle_incident(game, IncidentType.Collision, incident_data)
+                    vehicle.handle_incident(game, IncidentType.Collision, incident_data)
 
     def update(self, game):
         cur_speed = self.speed
@@ -343,7 +381,6 @@ class Vehicle(GameObject):
         pygame.draw.circle(screen, BLACK, (bounds.x + bounds.width*0.2, bounds.y + bounds.height), 5)
         pygame.draw.circle(screen, BLACK, (bounds.x + bounds.width*0.8, bounds.y + bounds.height), 5) 
         
-
         # draw the body
         pygame.draw.rect(screen, self.color, bounds)
 
@@ -371,6 +408,7 @@ class Vehicle(GameObject):
 class PlayerVehicle(Vehicle):
     def __init__(self, game):
         super().__init__(game)
+        self.incident_report = IncidentReport()
 
     def reset(self, game):
         self.set_sensor_profile('perfect')
@@ -393,6 +431,11 @@ class PlayerVehicle(Vehicle):
         self.light_detection = profile['light_detection']
         self.obstacle_detection = profile['obstacle_detection']
         self.speed_accuracy = profile['speed_accuracy']
+
+
+    def handle_incident(self, game, incident_type:IncidentType, incident_data:dict):
+        super().handle_incident(game, incident_type, incident_data)
+        self.incident_report.add_incident(Incident(game.game_frame, incident_type, incident_data))
 
     def update(self, game):
         desired_speed = self.speed
@@ -725,6 +768,8 @@ def main():
                     game.car.set_sensor_profile(sensor_profiles[current_sensor_index])
                 elif event.key == pygame.K_c:
                     game.draw_collisions = not game.draw_collisions
+                elif event.key == pygame.K_i:
+                    game.car.incident_report.print_report()
         game.keys = pygame.key.get_pressed()
         game.update()
         game.draw()
