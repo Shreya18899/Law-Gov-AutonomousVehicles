@@ -441,7 +441,7 @@ class PlayerVehicle(Vehicle):
     def update(self, game):
         # Adjust desired_speed based on compliance actions**
         if game.enforce_compliance and 'slow_weather' in game.compliance_actions:
-            self.desired_speed = 10  # Enforce a minimum speed of 10 mph in adverse weather
+            self.desired_speed = 10  # Enforce a maximum speed of 10 mph in adverse weather
         else:
             self.desired_speed = self.speed
 
