@@ -46,8 +46,8 @@ action('brake_signal') <= traffic_signal(ID, X1, 'red') & moving() & close_to(X1
 action('brake_obstacle') <= obstacle(ID, S1, X1, Y1) & moving() & predict_collision(X1, Y1, S1, 200, 50)
 
 # New Rule for Weather Conditions
-action('slow_weather') <= weather('Rain')
-action('slow_weather') <= weather('Snow')
+action('slow_weather') <= weather('Rain') & ego_speed(X) & speed_limit(Y) & (X > (Y - 10))
+action('slow_weather') <= weather('Snow') & ego_speed(X) & speed_limit(Y) & (X > (Y - 20))
 
 current_compliance_action(X) <= action(X)
 
