@@ -9,11 +9,10 @@ pygame.init()
 
 WIDTH = 1600
 HEIGHT = 600
-ROAD_MIDDLE = HEIGHT//2
-ROAD_TOP = HEIGHT//2 - ROAD_MIDDLE//2
-ROAD_BOTTOM = HEIGHT//2 + ROAD_MIDDLE//2
-ROAD_HEIGHT = ROAD_BOTTOM - ROAD_TOP
-CAR_SCREEN_POSITION = WIDTH//6
+ROAD_MIDDLE = HEIGHT // 2
+ROAD_TOP = HEIGHT // 2 - ROAD_MIDDLE // 2
+ROAD_BOTTOM = HEIGHT // 2 + ROAD_MIDDLE // 2
+CAR_SCREEN_POSITION = WIDTH // 6
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Automated Test Dummies! 0.0.1")
 
@@ -31,10 +30,7 @@ BROWN = (139, 69, 19)
 BUILDING_COLOR = (160, 160, 160)
 WINDOW_COLOR = (255, 255, 153)
 YELLOW = (255, 255, 0)
-PURPLE = (238, 130, 238)
-TAN = (210, 180, 140)
-LIGHT_TAN = (255, 228, 196)
-LIGHT_BROWN = (255, 222, 173)
+COLLISION_COLOR = YELLOW
 INFO_BOX_COLOR = (0, 0, 0, 150)  # Semi-transparent black
 
 HIGHWAY = "highway"
@@ -50,7 +46,6 @@ class IncidentType(Enum):
     Collision = 1
     TrafficLightViolation = 2
     SpeedViolation = 3
-    CollisionInvolvingPedestrian = 4
 
 class Incident:
     def __init__(self, incident_time: int, incident_type: IncidentType, data: dict):
@@ -84,15 +79,6 @@ class GameObject:
         self.id = GameObject._current_object_id
         GameObject._current_object_id += 1
 
-    def reset(self, game):
-        pass
-
-    def update(self, game):
-        pass
-
-    def draw(self, game):
-        pass
-
     @property
     def x(self):
         return self.bounds.x
@@ -125,15 +111,9 @@ class GameObject:
     def height(self, nh):
         self.bounds.height = nh
 
-    def get_collision_bounds(self):
-        return self.bounds
-
-    def update_collisions(self, game):
-        pass
-
     def collide(self, other_obj):
-        return self.bounds.colliderect(other_obj.get_collision_bounds())
-    
+        return self.bounds.colliderect(other_obj.bounds)
+
 class TrafficLight(GameObject):
     def __init__(self, game):
         super().__init__(0, ROAD_TOP, 10, ROAD_BOTTOM - ROAD_TOP)
@@ -183,7 +163,7 @@ class TrafficLight(GameObject):
         if game.draw_collisions:
             screen_bounds = self.bounds.copy()
             screen_bounds.x = game.get_screen_x(screen_bounds.x)
-            pygame.draw.rect(screen, YELLOW, screen_bounds, width=3)
+            pygame.draw.rect(screen, COLLISION_COLOR, screen_bounds, width=3)
 
         light_radius = 8
         box_start = self.y - 60
@@ -214,8 +194,8 @@ class Tree(GameObject):
 class Building(GameObject):
     def __init__(self, x, y, width, height):
         super().__init__(x, y, width, height)
-        #self.windows = []
-        #self.generate_windows()
+        self.windows = []
+        self.generate_windows()
 
     def generate_windows(self):
         window_rows = self.height // 30
@@ -312,8 +292,8 @@ class Vehicle(GameObject):
         self.bounds = pygame.Rect(spawn_x, spawn_y, Vehicle.vehicle_profiles[self.type]['width'], Vehicle.vehicle_profiles[self.type]['height']) 
         self.desired_speed = min((random.randrange(75, 120)/100) * game.env.speed_limit, self.max_speed)
         self.speed = self.desired_speed
+        self.stopped = False
         self.crashed = False
-        self.braking = False
 
     def set_profile(self, profile_name):
         profile = Vehicle.vehicle_profiles[profile_name]
@@ -337,8 +317,7 @@ class Vehicle(GameObject):
         return max(0, ((obstacle_predicted_position - target_position) / (self_speed - obstacle_speed)) if self_speed - obstacle_speed > 0 else 100000)
 
     def get_sensor_rect(self):
-        extra_sensor_height = 20
-        return pygame.Rect(self.x, self.y-extra_sensor_height//2, Vehicle.obstacle_detection_range, self.height+extra_sensor_height)
+        return pygame.Rect(self.x, self.y, Vehicle.obstacle_detection_range, self.height)
 
     def update_sensors(self, game, target_speed):
         vehicle_sensor = self.get_sensor_rect()
@@ -373,11 +352,11 @@ class Vehicle(GameObject):
         target_accel = self.calculate_accel(target_speed, time_to_intercept)
         return target_speed, target_accel, time_to_intercept, target_object
 
-    def handle_incident(self, game, incident_type:IncidentType, incident_data:dict):
+    def handle_incident(self, game, incident_type: IncidentType, incident_data: dict):
         if incident_type == IncidentType.Collision:
             self.crashed = True
             self.speed = 0
-        incident_data[self.id] = {'x': self.x, 'y': self.y, 'speed': self.speed, 'vehicle_type': self.profile_name}
+        incident_data[self.id] = {self.x, self.y, self.speed, self.profile_name}
 
     def update_collisions(self, game):
         for vehicle in game.get_current_env().vehicles:
@@ -386,12 +365,6 @@ class Vehicle(GameObject):
                     incident_data = {}
                     self.handle_incident(game, IncidentType.Collision, incident_data)
                     vehicle.handle_incident(game, IncidentType.Collision, incident_data)
-
-        for pedestrian in game.get_current_env().pedestrians:
-            if not pedestrian.crashed and self.collide(pedestrian):
-                incident_data = {}
-                self.handle_incident(game, IncidentType.CollisionInvolvingPedestrian, incident_data)
-                pedestrian.handle_incident(game, IncidentType.CollisionInvolvingPedestrian, incident_data)
 
     def update(self, game):
         cur_speed = self.speed
@@ -435,10 +408,10 @@ class Vehicle(GameObject):
         if game.draw_collisions:
             screen_bounds = self.bounds.copy()
             screen_bounds.x = game.get_screen_x(screen_bounds.x)
-            pygame.draw.rect(screen, YELLOW, screen_bounds, width=3)
+            pygame.draw.rect(screen, COLLISION_COLOR, screen_bounds, width=3)
             screen_sensor_bounds = self.get_sensor_rect().copy()
             screen_sensor_bounds.x = game.get_screen_x(screen_sensor_bounds.x)
-            pygame.draw.rect(screen, YELLOW, screen_sensor_bounds, width=3)
+            pygame.draw.rect(screen, COLLISION_COLOR, screen_sensor_bounds, width=3)
 
 class PlayerVehicle(Vehicle):
     def __init__(self, game):
@@ -449,7 +422,9 @@ class PlayerVehicle(Vehicle):
         self.set_sensor_profile('perfect')
         self.set_profile('sedan')
         self.bounds = pygame.Rect(0, HEIGHT // 2, Vehicle.vehicle_profiles['sedan']['width'], Vehicle.vehicle_profiles['sedan']['height']) 
-        self.speed = 0
+        self.desired_speed = 10  # Set desired speed to 10 mph
+        self.speed = 10          # Initialize speed to 10 mph
+        self.stopped = False
         self.crashed = False
         self.throttle = Vehicle.ThrottleCommand.Coast
         self.braking = False
@@ -470,22 +445,24 @@ class PlayerVehicle(Vehicle):
         self.incident_report.add_incident(Incident(game.game_frame, incident_type, incident_data))
 
     def update(self, game):
-        target_speed = self.speed
-        self.braking = False
-        if game.keys[pygame.K_LEFT]:
-            target_speed = max(0, target_speed - self.brake_decel)
-            self.throttle = Vehicle.ThrottleCommand.Brake
-        elif game.keys[pygame.K_RIGHT]:
-            target_speed = min(self.max_speed, target_speed + self.acceleration)
-            self.throttle = Vehicle.ThrottleCommand.Accel
+        # Adjust desired_speed based on compliance actions**
+        if game.enforce_compliance and 'slow_weather' in game.compliance_actions:
+            self.desired_speed = 10  # Enforce a maximum speed of 10 mph in adverse weather
         else:
-            self.throttle = Vehicle.ThrottleCommand.Coast
+            self.desired_speed = self.speed
 
+        # Handle user inputs to adjust desired_speed**
+        if game.keys[pygame.K_LEFT]:
+            self.desired_speed = max(0, self.desired_speed - self.brake_decel)  # Decrease desired_speed
+        elif game.keys[pygame.K_RIGHT]:
+            self.desired_speed = min(self.max_speed, self.desired_speed + self.acceleration)  # Increase desired_speed
+
+        # Handle vertical movement (lane changing)**
         target_y = self.y
         if game.keys[pygame.K_UP]:
-            target_y = max(HEIGHT//2 - game.get_current_env().road_height//3, self.y - self.vertical_speed)
+            target_y = max(HEIGHT // 2 - game.get_current_env().road_height // 3, self.y - self.vertical_speed)
         if game.keys[pygame.K_DOWN]:
-            target_y = min(HEIGHT//2 + game.get_current_env().road_height//3, self.y + self.vertical_speed)
+            target_y = min(HEIGHT // 2 + game.get_current_env().road_height // 3, self.y + self.vertical_speed)
 
         if self.y < target_y:
             self.y = min(self.y + self.vertical_speed, target_y)
@@ -495,199 +472,87 @@ class PlayerVehicle(Vehicle):
         target_speed, target_accel, time_to_intercept, target_object = self.update_sensors(game, target_speed)
         if isinstance(target_object, Vehicle):
             ComplianceModule.add_fact('obstacle', target_object.id, target_object.speed, target_object.x, target_object.y)
-        elif isinstance(target_object, TrafficLight):
+        elif  isinstance(target_object, TrafficLight):
             ComplianceModule.add_fact('traffic_signal', target_object.id, target_object.x, target_object.state)
-        elif isinstance(target_object, Pedestrian):
-            ComplianceModule.add_fact('obstacle', target_object.id, 0, target_object.x, target_object.y)
 
-        if game.enforce_compliance:
-            for a in game.compliance_actions:
-                if a.startswith('slow'):
-                    self.throttle = Vehicle.ThrottleCommand.Coast
-                elif a.startswith('brake'):
-                    self.throttle = Vehicle.ThrottleCommand.Brake
+        #Determine throttle based on desired_speed**
+        if self.speed < self.desired_speed:
+            self.throttle = Vehicle.ThrottleCommand.Accel
+        elif self.speed > self.desired_speed:
+            self.throttle = Vehicle.ThrottleCommand.Coast
+        else:
+            self.throttle = Vehicle.ThrottleCommand.Coast  # Maintain current speed
 
+        #Apply throttle commands to adjust speed**
         match self.throttle:
             case Vehicle.ThrottleCommand.Coast:
-                self.speed = max(0, self.speed - self.deceleration)                
+                # Prevent speed from dropping below desired_speed
+                self.speed = max(self.desired_speed, self.speed - self.deceleration)                
             case Vehicle.ThrottleCommand.Accel:
                 self.speed = min(self.speed + self.acceleration, self.max_speed)
             case Vehicle.ThrottleCommand.Brake:
                 self.speed = max(self.speed - self.brake_decel, 0)
                 self.braking = True
 
+        # **7. Update position based on speed**
         self.x += self.speed
 
-class Pedestrian(GameObject):
-
-    pedestrian_profiles = {
-        'normal': {'speed': 1, 'width': 10, 'height': 30},
-        'slow': {'speed': 0.5, 'width': 8, 'height': 25},
-        'fast': {'speed': 2, 'width': 12, 'height': 35},
-        'deer': {'speed': 4, 'width': 20, 'height': 45}
-    }
-
-    def __init__(self, game):
-        super().__init__()
-        self.reset(game)
-    
-    def reset(self, game):
-        self.init_id()
-        self.x = random.randint(2, 5) * WIDTH + game.car.x
-        self.y = ROAD_TOP
-        self.width = 20
-        self.height = ROAD_HEIGHT
-        self.person_pct = random.random()
-        self.direction = random.choice([-1, 1])
-        self.clothing_color = random.choice([RED, GREEN, BLUE, YELLOW, PURPLE])
-        self.head_color = random.choice([LIGHT_TAN, LIGHT_BROWN, BROWN, TAN])
-        self.crashed = False
-
-        if game.current_environment == HIGHWAY:
-            self.set_profile(game, 'deer')
-        else:
-            self.set_profile(game, random.choice(list(Pedestrian.pedestrian_profiles.keys())))
-
-    def set_profile(self, game, profile_name):
-        profile = Pedestrian.pedestrian_profiles[profile_name]
-        if profile_name == 'deer' and game.current_environment != HIGHWAY:
-            profile_name = 'normal'
-        self.profile_name = profile_name
-        profile = Pedestrian.pedestrian_profiles[profile_name]
-        self.walking_speed = profile['speed']
-        self.person_width = profile['width']
-        self.person_height = profile['height']
-
-    def handle_incident(self, game, incident_type:IncidentType, incident_data:dict):
-        if incident_type == IncidentType.CollisionInvolvingPedestrian:
-            self.crashed = True
-            incident_data[self.id] = {'x': self.x, 'y': self.y}
-
-    def update(self, game):
-        if not self.crashed:
-            self.person_pct += self.walking_speed * 0.001 * self.direction
-            self.person_pct = max(-0.2, min(1.2, self.person_pct))
-
-        screen_x = game.get_screen_x(self.x)
-        if screen_x < -WIDTH:
-            self.reset(game)
-
-    def get_collision_bounds(self):
-        person_x = self.bounds.centerx
-        person_y = ROAD_TOP + self.person_pct*ROAD_HEIGHT
-        bounds = pygame.Rect(person_x-self.person_width//2, person_y-self.person_height//2, self.person_width, self.person_height)
-        return bounds
-
-    def draw(self, game):
-        screen_bounds = self.bounds.copy()
-        screen_bounds.x = game.get_screen_x(screen_bounds.x)
-
-        if game.current_environment == CITY:
-            #draw the crosswalk
-            pygame.draw.rect(screen, WHITE, (screen_bounds.x, ROAD_TOP, screen_bounds.width, ROAD_HEIGHT), 2)
-            num_lines = 10
-            for i in range(1, num_lines):
-                pygame.draw.line(screen, WHITE, (screen_bounds.x, ROAD_TOP + i*(ROAD_HEIGHT//num_lines)), (screen_bounds.x + screen_bounds.width, ROAD_TOP + i*(ROAD_HEIGHT//num_lines)), 2)
-    
-        # draw the person
-        person_y = ROAD_TOP + self.person_pct*ROAD_HEIGHT
-        person_width = self.person_width
-        person_height = self.person_height
-    
-        if self.profile_name != 'deer':
-            pygame.draw.circle(screen, self.head_color, (screen_bounds.centerx, person_y - person_height//5), person_height//4)
-            pygame.draw.rect(screen, self.clothing_color, (screen_bounds.centerx-person_width//2, person_y, person_width, person_height//2))
-            pygame.draw.rect(screen, BLACK, (screen_bounds.centerx-person_width//2, person_y+person_height//2, person_width//5, person_height//2))
-            pygame.draw.rect(screen, BLACK, (screen_bounds.centerx+person_width//2, person_y+person_height//2, person_width//5, person_height//2))
-        else:
-            pygame.draw.rect(screen, BROWN, (screen_bounds.centerx-person_width//2, person_y, person_width, person_height//2))
-            pygame.draw.rect(screen, TAN, (screen_bounds.centerx-person_width//2, person_y+person_height//2, person_width//5, person_height//2))
-            pygame.draw.rect(screen, LIGHT_BROWN, (screen_bounds.centerx+person_width//2, person_y+person_height//2, person_width//5, person_height//2))
-            pygame.draw.circle(screen, BROWN, (screen_bounds.centerx, person_y - person_height//5), person_height//4)
-            pygame.draw.circle(screen, BLACK, (screen_bounds.centerx, person_y - person_height//5), person_height//8)
-            pygame.draw.rect(screen, LIGHT_BROWN, (screen_bounds.centerx-person_width, person_y-person_height//2-4, 2*person_width, 4))
-
-        collision_bounds = self.get_collision_bounds()
-
-        collision_bounds.x = game.get_screen_x(collision_bounds.x)
-        if self.crashed:
-            pygame.draw.line(screen, BLACK, collision_bounds.topleft, collision_bounds.bottomright, 3)
-            pygame.draw.line(screen, BLACK, collision_bounds.topright, collision_bounds.bottomleft, 3)
-
-        if game.draw_collisions:
-            pygame.draw.rect(screen, YELLOW, collision_bounds, width=3)
 
 class Environment:
-
-    environments = {
-        'highway': 
-        {
-            'speed_limit': 60, 
-            'road_height': HEIGHT // 2,
-            'num_lane_markers': 20,
-            'marker_spacing': 80,
-            'num_trees': 30,
-            'num_buildings': 2,
-            'num_vehicles': 2,
-            'num_pedestrians': 3,
-            'num_traffic_lights': 0
-        },
-        'city': 
-        {
-            'speed_limit': 30, 
-            'road_height': HEIGHT // 2,
-            'marker_spacing': 60,
-            'num_lane_markers': 25,
-            'num_buildings': 8,
-            'num_trees': 2,
-            'num_vehicles': 4,
-            'num_pedestrians': 1,
-            'num_traffic_lights': 1
-        }
-    }
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
+    def __init__(self, name, speed_limit):
         self.lane_markers = []
         self.trees = []
         self.buildings = []
         self.vehicles = []
         self.traffic_lights = []
-        self.pedestrians = []
         self.road_height = HEIGHT // 2
-
-    def set_environment(self, game, name):
-        env = Environment.environments[name]
-        self.reset()
         self.name = name
-        self.speed_limit = env['speed_limit']
-        self.road_height = env['road_height']
-        self.marker_spacing = env['marker_spacing']
-        self.num_lane_markers = env['num_lane_markers']
-        self.num_trees = env['num_trees']
-        self.num_buildings = env['num_buildings']
-        self.num_vehicles = env['num_vehicles']
-        self.num_pedestrians = env['num_pedestrians']
-        self.num_traffic_lights = env['num_traffic_lights']
-        
+        self.speed_limit = speed_limit
+
+    def setup_highway(self, game):
+        self.lane_markers.clear()
+        self.trees.clear()
+        self.buildings.clear()
+        self.vehicles.clear()
+        self.traffic_lights.clear()
+
         # Create lane markers
-        for i in range(self.num_lane_markers):
-            x_pos = i * self.marker_spacing
+        marker_spacing = 80
+        for i in range(20):
+            x_pos = i * marker_spacing
             self.lane_markers.append(LaneMarker(x_pos, HEIGHT // 2 - self.road_height // 6))
             self.lane_markers.append(LaneMarker(x_pos, HEIGHT // 2 + self.road_height // 6))
 
         # Create trees
-        for i in range(self.num_trees):
+        for i in range(30):
             side = random.choice([-1, 1])
             x = random.randint(0, WIDTH)
             y = HEIGHT // 2 + (self.road_height // 2 + random.randint(20, 100)) * side
             size = random.randint(30, 50)
             self.trees.append(Tree(x, y, size))
 
+        # Create vehicles
+        for i in range(3):
+            self.vehicles.append(Vehicle(game))
+
+    def setup_city(self, game):
+        self.lane_markers.clear()
+        self.trees.clear()
+        self.buildings.clear()
+        self.vehicles.clear()
+        self.traffic_lights.clear()
+
+        # Create lane markers
+        marker_spacing = 60
+        for i in range(25):
+            x_pos = i * marker_spacing
+            self.lane_markers.append(LaneMarker(x_pos, HEIGHT // 2 - self.road_height // 2))
+            self.lane_markers.append(LaneMarker(x_pos, HEIGHT // 2 + self.road_height // 2))
+
+        self.traffic_lights.append(TrafficLight(game))
+
         # Create buildings
-        for i in range(self.num_buildings):
+        for i in range(8):
             # Left side buildings
             width = random.randint(60, 100)
             height = random.randint(100, 200)
@@ -700,67 +565,16 @@ class Environment:
             x = i * (width + 50)  # Added spacing between buildings
             self.buildings.append(Building(x, HEIGHT // 2 + self.road_height // 2, width, height))
 
-        # Create traffic lights
-        for i in range(self.num_traffic_lights):
-            self.traffic_lights.append(TrafficLight(game))
-
         # Create vehicles
-        for i in range(self.num_vehicles):
+        for i in range(3):
             self.vehicles.append(Vehicle(game))
-            
-        # Create pedestrians
-        for i in range(self.num_pedestrians):
-            self.pedestrians.append(Pedestrian(game))
-
-    def update(self, game):
-
-        # Update traffic lights
-        for light in self.traffic_lights:
-            light.update(game)
-            if(game.car.x < light.x):
-                if abs(game.car.x - light.x) < game.car.light_detection * Vehicle.light_detection_range:
-                    ComplianceModule.add_fact('traffic_signal', light.id, light.x, light.state)
-
-        # Update lane markers
-        for marker in self.lane_markers:
-            marker.x -= game.car.speed
-            if marker.x < -40:
-                marker.x = WIDTH + 40
-
-        # Update vehicles
-        for vehicle in self.vehicles:
-            vehicle.update(game)                
-
-        # Update pedestrians
-        for pedestrian in self.pedestrians:
-            pedestrian.update(game) 
-
-        # Update trees
-        for tree in self.trees:
-            tree.x -= game.car.speed / 4
-            if tree.x < -50:
-                tree.x = random.randint(1, 3) * WIDTH
-                tree.y = HEIGHT // 2 + (self.road_height // 2 + random.randint(20, 100)) * random.choice([-1, 1])
-
-        # Update buildings
-        for building in self.buildings:
-            building.x -= game.car.speed / 4
-            if building.x + building.width < 0:
-                building.x = WIDTH
-                building.height = random.randint(100, 200)
-                #building.windows = []
-                #building.generate_windows()
-
-        # Update collisions
-        for v in self.vehicles:
-            v.update_collisions(game)
 
 class Game:
     def __init__(self):
-        self.env = Environment()
         self.car = PlayerVehicle(self)
         self.setup_environment(CITY)
         self.draw_collisions = False
+        self.target_y = self.car.y
         self.collisions = set()
         self.game_frame = 0
         self.compliance_actions = []
@@ -784,7 +598,6 @@ class Game:
     def setup_environment(self, environment):
         self.car.reset(self)
         self.current_environment = environment
-        self.env.set_environment(self, environment)
         self.env.vehicles.append(self.car)
 
     def get_current_env(self):
@@ -801,8 +614,8 @@ class Game:
     def draw_building(self, building):
         pygame.draw.rect(screen, BUILDING_COLOR, 
                         (building.x, building.y, building.width, building.height))
-        #for window in building.windows:
-        #    pygame.draw.rect(screen, WINDOW_COLOR, window)
+        for window in building.windows:
+            pygame.draw.rect(screen, WINDOW_COLOR, window)
 
     def draw_weather(self):
         if self.weather == Weather.Rain:
@@ -811,7 +624,7 @@ class Game:
                 y_start = random.randint(0, HEIGHT)
                 x_end = x_start + random.randint(-5, 5)
                 y_end = y_start + 10
-                pygame.draw.line(screen, BLUE, (x_start, y_start), (x_end, y_end), 2)
+                pygame.draw.line(screen, BLUE, (x_start, y_start), (x_end, y_end), 1)
         elif self.weather == Weather.Snow:
             for _ in range(100):  # Increased density for better visibility
                 x = random.randint(0, WIDTH)
@@ -820,15 +633,55 @@ class Game:
 
     def update(self):
         env = self.get_current_env()
-        env.update(self)
         
+        # Update traffic lights in city mode
+        if self.current_environment == CITY:
+            for light in env.traffic_lights:
+                light.update(self)
+
+                if self.car.x < light.x:
+                    if abs(self.car.x - light.x) < self.car.light_detection * Vehicle.light_detection_range:
+                        ComplianceModule.add_fact('traffic_signal', light.id, light.x, light.state)
+
+        # Update lane markers
+        for marker in env.lane_markers:
+            marker.x -= self.car.speed / 2
+            if marker.x < -40:
+                marker.x = WIDTH + 40
+
+        # Update vehicles
+        for vehicle in env.vehicles:
+            vehicle.update(self)                
+
+        # Update trees (highway only)
+        if self.current_environment == HIGHWAY:
+            for tree in env.trees:
+                tree.x -= self.car.speed / 4
+                if tree.x < -50:
+                    tree.x = random.randint(1, 3) * WIDTH
+                    tree.y = HEIGHT // 2 + (env.road_height // 2 + random.randint(20, 100)) * random.choice([-1, 1])
+
+        # Update buildings (city only)
+        if self.current_environment == CITY:
+            for building in env.buildings:
+                building.x -= self.car.speed / 4
+                if building.x + building.width < 0:
+                    building.x = WIDTH
+                    building.height = random.randint(100, 200)
+                    building.windows = []
+                    building.generate_windows()
+
+        # Update collisions
+        for v in env.vehicles:
+            v.update_collisions(self)
+
         for f in self.collisions.copy():
             if self.game_frame - f > 60:
                 self.collisions.remove(f)
 
         # Update compliance system with speed, speed limit, and weather
         ComplianceModule.add_fact('ego_speed', self.car.get_sensor_speed())
-        ComplianceModule.add_fact('ego_position', self.car.x+self.car.width, self.car.y)
+        ComplianceModule.add_fact('ego_position', self.car.x, self.car.y)
         ComplianceModule.add_fact('speed_limit', env.speed_limit)
         ComplianceModule.add_fact('collision', len(self.collisions) > 0)
         
@@ -866,8 +719,9 @@ class Game:
         for marker in env.lane_markers:
             pygame.draw.rect(screen, WHITE, (marker.x, marker.y - marker.height // 2, marker.width, marker.height))
 
-        for light in env.traffic_lights:
-            light.draw(self)
+        if self.current_environment == CITY:
+            for light in env.traffic_lights:
+                light.draw(self)
 
         for pedestrian in env.pedestrians:
             pedestrian.draw(self)
@@ -883,7 +737,9 @@ class Game:
         text_height = font.get_height()
 
         speed_text = f"Speed: {int(self.car.speed)} mph"
+        # desired_speed_text = f"Desired Speed: {int(self.desired_speed)} mph"  # Added line
         env_text = f'Environment: {env.name} ({env.speed_limit} mph)'
+        # weather_text = f'Weather: {self.weather.value.capitalize()}'
 
         speed_surface = font.render(speed_text, True, WHITE)
         env_surface = font.render(env_text, True, WHITE)
@@ -929,7 +785,6 @@ def main():
     clock = pygame.time.Clock()
     game = Game()
     running = True
-    current_environment_index = 1
     current_profile_index = 0
     current_sensor_index = 0
     vehicle_profiles = list(Vehicle.vehicle_profiles.keys())
@@ -939,9 +794,8 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_e:
-                    current_environment_index = (current_environment_index + 1) % len(Environment.environments)
-                    game.setup_environment(list(Environment.environments.keys())[current_environment_index])
+                if event.key == pygame.K_SPACE:
+                    game.setup_environment(CITY if game.current_environment == HIGHWAY else HIGHWAY)
                 elif event.key == pygame.K_TAB:
                     game.enforce_compliance = not game.enforce_compliance
                 elif event.key == pygame.K_p:
