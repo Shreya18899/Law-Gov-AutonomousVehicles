@@ -15,7 +15,7 @@ ROAD_BOTTOM = HEIGHT//2 + ROAD_MIDDLE//2
 ROAD_HEIGHT = ROAD_BOTTOM - ROAD_TOP
 CAR_SCREEN_POSITION = WIDTH//6
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Driving Simulation - Highway & City")
+pygame.display.set_caption("Automated Test Dummies! 0.0.1")
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -340,15 +340,14 @@ class Vehicle(GameObject):
         extra_sensor_height = 20
         return pygame.Rect(self.x, self.y-extra_sensor_height//2, Vehicle.obstacle_detection_range, self.height+extra_sensor_height)
 
-    def update_sensors(self, game):
+    def update_sensors(self, game, target_speed):
         vehicle_sensor = self.get_sensor_rect()
         target_position = self.x + self.width * 2
         time_to_intercept = 100000
-        target_speed = self.speed
         target_object = None
         for vehicle in game.get_current_env().vehicles:
             if vehicle != self:
-                if vehicle_sensor.colliderect(vehicle.get_collision_bounds()):
+                if vehicle_sensor.colliderect(vehicle.get_collision_bounds()) and (not vehicle.crashed or self == game.car):
                     tti = Vehicle.calc_time_to_intercept(target_position, vehicle.x, self.speed, vehicle.speed)
                     if tti < time_to_intercept:
                         time_to_intercept = tti
@@ -356,16 +355,15 @@ class Vehicle(GameObject):
                         target_object = vehicle
 
         for light in game.get_current_env().traffic_lights:
-            if vehicle_sensor.colliderect(light.get_collision_bounds()):
-                if light.x > self.x and light.state == "red":
-                    tti = Vehicle.calc_time_to_intercept(target_position, light.x, self.speed, 0)
-                    if tti < time_to_intercept:
-                        time_to_intercept = tti
-                        target_speed = 0
-                        target_object = light
+            if vehicle_sensor.colliderect(light.get_collision_bounds()) and (light.state == "red"):
+                tti = Vehicle.calc_time_to_intercept(target_position, light.x, self.speed, 0)
+                if tti < time_to_intercept:
+                    time_to_intercept = tti
+                    target_speed = 0
+                    target_object = light
 
         for pedestrian in game.get_current_env().pedestrians:
-            if vehicle_sensor.colliderect(pedestrian.get_collision_bounds()):
+            if vehicle_sensor.colliderect(pedestrian.get_collision_bounds()) and (not pedestrian.crashed or self == game.car):
                 tti = Vehicle.calc_time_to_intercept(target_position, pedestrian.x, self.speed, 0)
                 if tti < time_to_intercept:
                     time_to_intercept = tti
@@ -398,7 +396,7 @@ class Vehicle(GameObject):
     def update(self, game):
         cur_speed = self.speed
         if not self.crashed:
-            target_speed, target_accel, time_to_intercept, target_object = self.update_sensors(game)
+            target_speed, target_accel, time_to_intercept, target_object = self.update_sensors(game, self.desired_speed)
             self.speed += target_accel
             self.x += self.speed
         
@@ -494,7 +492,7 @@ class PlayerVehicle(Vehicle):
         elif self.y > target_y:
             self.y = max(self.y - self.vertical_speed, target_y)
             
-        target_speed, target_accel, time_to_intercept, target_object = self.update_sensors(game)
+        target_speed, target_accel, time_to_intercept, target_object = self.update_sensors(game, target_speed)
         if isinstance(target_object, Vehicle):
             ComplianceModule.add_fact('obstacle', target_object.id, target_object.speed, target_object.x, target_object.y)
         elif isinstance(target_object, TrafficLight):
@@ -784,10 +782,10 @@ class Game:
         return query_x - (self.car.x - CAR_SCREEN_POSITION)
 
     def setup_environment(self, environment):
+        self.car.reset(self)
         self.current_environment = environment
         self.env.set_environment(self, environment)
         self.env.vehicles.append(self.car)
-        self.car.reset(self)
 
     def get_current_env(self):
         return self.env
@@ -871,11 +869,11 @@ class Game:
         for light in env.traffic_lights:
             light.draw(self)
 
-        for vehicle in env.vehicles:
-            vehicle.draw(self)
-
         for pedestrian in env.pedestrians:
             pedestrian.draw(self)
+
+        for vehicle in env.vehicles:
+            vehicle.draw(self)
 
         for tree in env.trees:
             if tree.y >= HEIGHT // 2:
